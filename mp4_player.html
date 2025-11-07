@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MP4 Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .player-container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%;
+            background-color: #000;
+            cursor: none;
+        }
+
+        .video-wrapper.show-cursor {
+            cursor: auto;
+        }
+
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+        }
+        
+        /* --- 0) 浮水印 UI 統一 --- */
+        .video-overlays {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+        }
+        
+        .overlay-icon {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1); /* 0) 統一背景 */
+            border-radius: 8px; /* 0) 統一圓角 */
+            padding: 15px;
+            opacity: 0;
+            
+            /* 4) 動畫: 預設縮小 */
+            /* transform: scale(0.8); */
+            /* transition: opacity 0.15s ease, transform 0.15s ease; */
+
+            /* Req 5: 加快動畫並減少縮放幅度 */
+            transform: scale(0.9);
+            transition: opacity 0.1s ease, transform 0.1s ease;
+            
+            font-size: 1.5rem;
+            color: #dddddd; /* 0) 統一文字顏色 */
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .overlay-icon.show {
+            opacity: 1;
+            transform: scale(1); /* 4) 動畫: 放大顯示 */
+        }
+        
+        #overlay-center {
+            top: 50%;
+            left: 50%;
+            padding: 20px;
+            /* 4) 動畫: 確保 transform-origin 正確 */
+            /* transform: translate(-50%, -50%) scale(0.8); */
+            transform: translate(-50%, -50%) scale(0.9); /* Req 5 */
+        }
+        
+        #overlay-center.show {
+             transform: translate(-50%, -50%) scale(1);
+        }
+        
+        .overlay-svg {
+            width: 48px;
+            height: 48px;
+            fill: #dddddd; /* 0) 統一 SVG 顏色 */
+            display: none;
+        }
+        
+        .overlay-svg.active {
+            display: block;
+        }
+        
+        .overlay-seek-svg {
+           width: 24px;
+           height: 24px;
+           fill: #dddddd; /* 0) 統一 SVG 顏色 */
+        }
+
+        /* Req 1: 讓 +/- SVG 變小 */
+        .overlay-seek-arithmetic-svg {
+            width: 18px;
+            height: 18px;
+        }
+        
+        /* 1) NEW: CSS for dynamic number SVGs */
+        .overlay-seek-num-svg {
+            display: none;
+        }
+        .overlay-seek-num-svg.active {
+            display: block;
+        }
+        
+        #overlay-top {
+            top: 20px;
+            left: 50%;
+            /* transform: translateX(-50%) scale(0.8); */ /* 4) 動畫 */
+            transform: translateX(-50%) scale(0.9); /* Req 5 */
+            gap: 2px;
+        }
+        
+        #overlay-top.show {
+            transform: translateX(-50%) scale(1); /* 4) 動畫 */
+        }
+        
+        /* 3) CHANGED: 長按加速 SVG (Enlarged) */
+        .overlay-speed-svg {
+            width: 36px; /* Was 24px */
+            height: 36px; /* Was 24px */
+            fill: #dddddd;
+        }
+        
+        #overlay-left {
+            top: 50%;
+            left: 20px;
+            /* transform: translateY(-50%) scale(0.8); */ /* 4) 動畫 */
+            transform: translateY(-50%) scale(0.9); /* Req 5 */
+            /* gap: 2px; */ /* Req 2: Removed */
+            gap: 8px; /* Req 2: "Large gap" */
+        }
+        #overlay-left.show {
+            transform: translateY(-50%) scale(1); /* 4) 動畫 */
+        }
+        
+        #overlay-right {
+            top: 50%;
+            right: 20px;
+            /* transform: translateY(-50%) scale(0.8); */ /* 4) 動畫 */
+            transform: translateY(-50%) scale(0.9); /* Req 5 */
+            /* gap: 2px; */ /* Req 2: Removed */
+            gap: 8px; /* Req 2: "Large gap" */
+        }
+        #overlay-right.show {
+            transform: translateY(-50%) scale(1); /* 4) 動畫 */
+        }
+
+        /* Req 2: 新增 Wrapper 用於 "Small gap" */
+        .seek-info-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 2px; /* "Small gap" */
+        }
+        /* --- (結束) --- */
+
+
+        .file-input-wrapper {
+            padding: 20px;
+            background-color: #222;
+            /* text-align: center; */ /* Req 4: Changed */
+            text-align: left; /* Req 4: Changed */
+        }
+
+        .file-input-wrapper input[type="file"] {
+            color: #999;
+        }
+
+        .file-input-wrapper input[type="file"]::file-selector-button {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: #dddddd;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-right: 15px;
+        }
+        
+        .file-input-wrapper input[type="file"]::-webkit-file-upload-button {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: #dddddd;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-right: 15px;
+        }
+
+        .file-input-wrapper input[type="file"]::file-selector-button:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .file-input-wrapper input[type="file"]::-webkit-file-upload-button:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0));
+            padding: 20px 15px 15px 15px;
+            transition: opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .controls.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .progress-bar-container {
+            position: relative;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+
+        .progress-bar-hit {
+            position: absolute;
+            width: 100%;
+            height: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        .progress-bar {
+            position: relative;
+            width: 100%;
+            height: 4px;
+            background-color: #555;
+            border-radius: 3px;
+            overflow: visible;
+            transition: height 0.2s ease;
+        }
+
+        .progress-bar-hit:hover ~ .progress-bar {
+            height: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #ccc;
+            border-radius: 3px;
+            transition: background-color 0.2s ease;
+        }
+
+        .progress-bar-hit:hover ~ .progress-bar .progress-fill {
+            background-color: #ddd;
+        }
+
+        .progress-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #fff;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            opacity: 1;
+            transition: opacity 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            z-index: 2;
+        }
+
+        .progress-handle:active {
+            cursor: grabbing;
+        }
+
+        .thumbnail-preview {
+            position: absolute;
+            bottom: 22px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            padding: 5px 8px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+            transform: translateX(-50%);
+        }
+
+        .thumbnail-preview.show {
+            opacity: 1;
+        }
+
+        .time-label {
+            display: block;
+            text-align: center;
+            font-size: 12px;
+            color: #eee;
+            white-space: nowrap;
+        }
+
+        .controls-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .controls-left, .controls-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: #ccc;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            width: 34px;
+            height: 34px;
+        }
+
+        .btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn:active {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .play-pause-svg, .fullscreen-svg, .settings-svg {
+            width: 16px;
+            height: 16px;
+            display: none;
+            fill: #dddddd; /* 統一顏色 */
+        }
+        
+        .play-pause-svg.active,
+        .fullscreen-svg.active,
+        .settings-svg.active {
+            display: block;
+        }
+
+        .volume-container {
+            display: flex;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            padding: 0 8px;
+            height: 34px;
+            transition: all 0.3s ease;
+        }
+
+        .volume-container:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .volume-icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            margin: 0 6px 0 0;
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+        }
+
+        .volume-svg {
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        
+        .volume-svg.active {
+            display: block;
+        }
+
+        .volume-slider {
+            width: 0;
+            opacity: 0;
+            visibility: hidden;
+            transition: width 0.3s ease, opacity 0.2s ease, visibility 0.3s ease;
+            height: 4px;
+            background-color: #666;
+            border-radius: 2px;
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .volume-container:hover .volume-slider {
+            width: 60px;
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            background-color: #ccc;
+            border-radius: 50%;
+            cursor: grab;
+        }
+
+        .volume-slider::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            background-color: #ccc;
+            border-radius: 50%;
+            cursor: grab;
+            border: none;
+        }
+
+        .time-display {
+            font-size: 13px;
+            color: #ccc;
+            min-width: 0;
+            text-align: center;
+            margin-left: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            padding: 0 10px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .time-display:hover {
+             background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .info-text {
+            font-size: 14px;
+            color: #888;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .settings-menu {
+            position: absolute;
+            bottom: 80px;
+            right: 15px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 5px;
+            z-index: 20;
+            display: none;
+            width: 180px;
+        }
+
+        .settings-menu.show {
+            display: block;
+        }
+
+        .settings-view {
+            display: none;
+        }
+        .settings-view.active {
+            display: block;
+        }
+
+        .settings-menu-item,
+        .submenu-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            color: #dddddd;
+        }
+        
+        .settings-menu-item:hover,
+        .submenu-item:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .settings-menu-item .label {
+            color: #dddddd;
+            flex-grow: 1;
+        }
+        .settings-menu-item .value {
+            color: #dddddd;
+            width: 50px;
+            text-align: right;
+        }
+        .settings-menu-item .arrow {
+            color: #dddddd;
+            width: 20px;
+            text-align: center;
+        }
+
+        .submenu-item.active {
+             font-weight: bold;
+             color: #fff;
+        }
+
+        .submenu-header {
+            display: flex;
+            align-items: center;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .submenu-back-btn {
+            background: none;
+            border: none;
+            color: #dddddd;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 5px;
+            margin-right: 5px;
+        }
+
+        .submenu-title {
+            font-weight: bold;
+            color: #fff;
+        }
+        
+        /* Req 3: CSS for new info-only items in settings */
+        .submenu-info-item {
+            padding: 8px 12px;
+            color: #ccc;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .submenu-info-item strong {
+            color: #fff;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="player-container" id="playerContainer">
+        <div class="video-wrapper" id="videoWrapper">
+            <video id="video"></video>
+            
+            <div class="video-overlays">
+                <div class="overlay-icon" id="overlay-center">
+                    <svg id="overlay-play-svg" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 163.861 163.861">
+                        <g><path d="M34.857 3.613C20.084-4.861 8.107 2.081 8.107 19.106v125.637c0 17.042 11.977 23.975 26.75 15.509L144.67 97.275c14.778-8.477 14.778-22.211 0-30.686L34.857 3.613z" fill="#dddddd"></path></g>
+                    </svg>
+                    <svg id="overlay-pause-svg" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+                        <g><path d="M13 5v22a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3h1a3 3 0 0 1 3 3zm10-3h-1a3 3 0 0 0-3 3v22a3 3 0 0 0 3 3h1a3 3 0 0 0 3-3V5a3 3 0 0 0-3-3z" fill="#dddddd"></path></g>
+                    </svg>
+                    
+                    <svg id="overlay-vol-high" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g><path d="M20.8 4.293a1 1 0 0 0-1.41 1.414 8.911 8.911 0 0 1 0 12.586 1 1 0 1 0 1.41 1.414 10.911 10.911 0 0 0 0-15.414Z" fill="#dddddd"></path><path d="M18.093 7.293a1 1 0 1 0-1.414 1.414 4.664 4.664 0 0 1 0 6.586 1 1 0 1 0 1.414 1.414 6.665 6.665 0 0 0 0-9.414ZM13.819.207A12.055 12.055 0 0 0 6.268 5H5a5.006 5.006 0 0 0-5 5v4a5.006 5.006 0 0 0 5 5h1.269a12.051 12.051 0 0 0 7.55 4.793A1 1 0 0 0 15 22.81V1.19a1 1 0 0 0-1.181-.983Z" fill="#dddddd"></path></g>
+                    </svg>
+                    <svg id="overlay-vol-low" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g><path d="M14.003 23.814a.924.924 0 0 1-.181-.017c-2.999-.551-5.752-2.299-7.554-4.794H4.997a5.005 5.005 0 0 1-4.999-5V9.998c0-2.757 2.243-5 5-5h1.271C8.068 2.506 10.821.758 13.822.204a.997.997 0 0 1 1.181.984v21.627a1.001 1.001 0 0 1-1 1Zm4.02-7.042a6.757 6.757 0 0 0 0-9.546.999.999 0 1 0-1.414 1.414 4.756 4.756 0 0 1 0 6.718.999.999 0 1 0 1.414 1.414Z" fill="#dddddd"></path></g>
+                    </svg>
+                    <svg id="overlay-vol-off" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g><path d="M13.644.418a1.003 1.003 0 0 0-.821-.215C9.822.758 7.069 2.505 5.269 4.997h-.271a5.007 5.007 0 0 0-5 5.001v4.005c0 2.757 2.243 5 5 5h.271c1.802 2.495 4.555 4.243 7.554 4.794a1.004 1.004 0 0 0 .821-.214c.228-.19.36-.472.36-.769V1.187a.998.998 0 0 0-.36-.769Zm-1.64 21.117a10.138 10.138 0 0 1-5.113-3.703l-.299-.415a1 1 0 0 0-.811-.415h-.782c-1.654 0-3-1.346-3-3V9.997c0-1.654 1.346-3 3-3h.782a1 1 0 0 0 .811-.415l.299-.415a10.154 10.154 0 0 1 5.114-3.702v19.068Zm11.729-7.242a.999.999 0 1 1-1.414 1.414l-2.293-2.293-2.293 2.293a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414L18.612 12l-2.293-2.293a.999.999 0 1 1 1.414-1.414l2.293 2.293 2.293-2.293a.999.999 0 1 1 1.414 1.414L21.44 12l2.293 2.293Z" fill="#dddddd"></path></g>
+                    </svg>
+                    <svg id="overlay-vol-muted" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g><path d="M15.004 20.004v2.812a1.001 1.001 0 0 1-1.181.983c-2.999-.551-5.752-2.299-7.554-4.794h-1.27a5.008 5.008 0 0 1-5.001-5.003v-4.001c0-1.116.361-2.173 1.045-3.057a1.001 1.001 0 0 1 1.582 1.224A2.966 2.966 0 0 0 1.998 10v4.001A3.006 3.006 0 0 0 5 17.003h1.78c.321 0 .622.154.811.414l.3.415a10.142 10.142 0 0 0 5.113 3.703v-1.532a1 1 0 1 1 2 0Zm8.703 3.703a.997.997 0 0 1-1.414 0l-22-22A.999.999 0 1 1 1.707.293L6.33 4.916C8.131 2.468 10.855.753 13.822.205a1 1 0 0 1 1.181.984v12.402l1.686 1.686a4.717 4.717 0 0 0 1.31-3.276 4.718 4.718 0 0 0-1.392-3.359.999.999 0 1 1 1.414-1.414 6.707 6.707 0 0 1 1.978 4.773 6.706 6.706 0 0 1-1.896 4.69l1.415 1.415c3.33-3.418 3.304-8.908-.081-12.292A.999.999 0 1 1 20.851 4.4c4.164 4.164 4.191 10.922.081 15.12l2.774 2.774a.999.999 0 0 1 0 1.414ZM7.762 6.348l5.242 5.242V2.468A10.14 10.14 0 0 0 7.89 6.17l-.128.178Z" fill="#dddddd"></path></g>
+                    </svg>
+                    <svg id="overlay-speed-up" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g><path d="M11.2 13.3 2 19.5c-.2.2-.5.1-.7-.1-.1-.1-.1-.2-.1-.3V4.9c0-.3.2-.5.5-.5.1 0 .2 0 .3.1l9.2 6.1V4.9c0-.3.2-.5.5-.5.1 0 .2 0 .3.1l10.6 7.1c.2.2.3.5.1.7 0 .1-.1.1-.1.1L12 19.5c-.2.2-.5.1-.7-.1-.1-.1-.1-.2-.1-.3z" fill="#dddddd"></path></g>
+                    </svg>
+                    <svg id="overlay-speed-down" class="overlay-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                         <g transform="matrix(-1,0,0,1,24,0)"><path d="M11.2 13.3 2 19.5c-.2.2-.5.1-.7-.1-.1-.1-.1-.2-.1-.3V4.9c0-.3.2-.5.5-.5.1 0 .2 0 .3.1l9.2 6.1V4.9c0-.3.2-.5.5-.5.1 0 .2 0 .3.1l10.6 7.1c.2.2.3.5.1.7 0 .1-.1.1-.1.1L12 19.5c-.2.2-.5.1-.7-.1-.1-.1-.1-.2-.1-.3z" fill="#dddddd"></path></g>
+                    </svg>
+                </div>
+                
+                <div class="overlay-icon" id="overlay-top">
+                    <span id="overlay-top-text"></span>
+                    <svg id="overlay-ctrl-speed" class="overlay-speed-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="display: none;">
+                        <g><path d="M12 19a1 1 0 0 1-.71-1.71l5.3-5.29-5.3-5.29A1 1 0 0 1 12.7 5.3l6 6a1 1 0 0 1 0 1.41l-6 6a1 1 0 0 1-.7.29z" fill="#dddddd"></path><path d="M6 19a1 1 0 0 1-.71-1.71l5.3-5.29-5.3-5.29a1 1 0 0 1 1.42-1.42l6 6a1 1 0 0 1 0 1.41l-6 6A1 1 0 0 1 6 19z" fill="#dddddd"></path></g>
+                    </svg>
+                </div>
+                
+                <div class="overlay-icon" id="overlay-left">
+                    <svg class="overlay-seek-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.35 6.35">
+                        <g transform="matrix(-1.5,0,0,1.5,7.93, -1.58)"><path d="M2.258 1.315a.265.265 0 0 0-.174.469L3.703 3.17l-1.62 1.386a.265.265 0 1 0 .345.4L4.28 3.373a.265.265 0 0 0 0-.403L2.428 1.382a.265.265 0 0 0-.17-.067z" fill="#dddddd"></path></g>
+                    </svg>
+                    <span class="seek-info-wrapper">
+                        <svg class="overlay-seek-svg overlay-seek-arithmetic-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                            <g><path d="M480 288H32c-17.673 0-32-14.327-32-32s14.327-32 32-32h448c17.673 0 32 14.327 32 32s-14.327 32-32 32z" fill="#dddddd"></path></g>
+                        </svg>
+                        <svg id="overlay-seek-left-5" class="overlay-seek-svg overlay-seek-num-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                            <g transform="matrix(0.8,0,0,0.8,10.17,10)"><path d="M24.33 22.78V44.91a9.32 9.32 0 0 0 2.8 6.67 9.565 9.565 0 0 0 6.75 2.77c2.8 0 5.41-1.26 7.27-3.33.75-.84 1.58-1.56 2.52-2.16 2-1.31 4.24-1.96 6.71-1.96 3.56 0 6.33 1.22 8.29 3.66s2.94 5.88 2.94 10.32v7.97c0 4.49-1.02 7.95-3.07 10.39-2.05 2.45-4.95 3.66-8.69 3.66-3.35 0-6.06-.96-8.13-2.9-1.07-1-1.91-2.21-2.54-3.62a7.552 7.552 0 0 0-2.84-3.3 7.932 7.932 0 0 0-4.22-1.22c-5.58 0-9.36 5.68-7.11 10.73.53 1.17 1.12 2.29 1.77 3.35 2.42 3.95 5.61 6.94 9.55 8.99S44.74 98 49.72 98c5.81 0 10.79-1.14 14.93-3.43s7.31-5.61 9.49-9.97c2.18-4.35 3.27-9.6 3.27-15.75v-7.97c0-6.14-.98-11.39-2.94-15.75-1.96-4.35-4.82-7.67-8.56-9.93-3.75-2.27-8.24-3.4-13.48-3.4-2.25 0-4.49.37-6.71 1.11-2.23.74-4.09 1.79-5.59 3.14V16.97h26.93c2.09 0 3.98-.84 5.35-2.19a7.443 7.443 0 0 0 2.22-5.3c0-4.13-3.39-7.48-7.57-7.48H32.08c-4.28 0-7.75 3.43-7.75 7.66v5.72z" fill="#dddddd"></path></g>
+                        </svg>
+                        <svg id="overlay-seek-left-10" class="overlay-seek-svg overlay-seek-num-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                            <g transform="matrix(0.8,0,0,0.8,10,10)"><path d="M28.49 5.36A11.81 11.81 0 0 0 20.2 2c-2 0-3.96.5-5.7 1.45l-7.71 4.2c-1.22.66-2.2 1.62-2.88 2.75s-1.05 2.44-1.05 3.79c0 5.58 6.01 9.2 11.09 6.69l1.86-.92v70.15c0 4.36 3.6 7.89 8.05 7.89s8.06-3.53 8.06-7.89V13.48c0-3.17-1.31-6.04-3.43-8.12zM90.06 8.97C85.34 4.32 78.45 2 69.4 2c-.94 0-1.85.03-2.74.08-7.68.43-13.63 2.74-17.88 6.92-4.75 4.67-7.12 11.23-7.12 19.66v42.68c0 8.39 2.36 14.93 7.08 19.62 4.23 4.21 10.2 6.53 17.91 6.96.89.05 1.81.08 2.75.08 9.01 0 15.88-2.33 20.62-7.01 4.75-4.66 7.12-11.22 7.12-19.65V28.66c0-8.48-2.36-15.04-7.08-19.69zm-8.52 60.11c0 4.56-.98 8.06-2.94 10.49s-5.02 3.65-9.2 3.65-7.24-1.22-9.2-3.65-2.94-5.93-2.94-10.49V30.92c0-4.56.98-8.06 2.94-10.49s5.02-3.65 9.2-3.65 7.24 1.22 9.2 3.65 2.94 5.93 2.94 10.49z" fill="#dddddd"></path></g>
+                        </svg>
+                    </span>
+                </div>
+                
+                <div class="overlay-icon" id="overlay-right">
+                    <span class="seek-info-wrapper">
+                        <svg class="overlay-seek-svg overlay-seek-arithmetic-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                            <g><path d="M480 224H288V32c0-17.673-14.327-32-32-32s-32 14.327-32 32v192H32c-17.673 0-32 14.327-32 32s14.327 32 32 32h192v192c0 17.673 14.327 32 32 32s32-14.327 32-32V288h192c17.673 0 32-14.327 32-32s-14.327-32-32-32z" fill="#dddddd"></path></g>
+                        </svg>
+                        <svg id="overlay-seek-right-5" class="overlay-seek-svg overlay-seek-num-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                            <g transform="matrix(0.8,0,0,0.8,10.17,10)"><path d="M24.33 22.78V44.91a9.32 9.32 0 0 0 2.8 6.67 9.565 9.565 0 0 0 6.75 2.77c2.8 0 5.41-1.26 7.27-3.33.75-.84 1.58-1.56 2.52-2.16 2-1.31 4.24-1.96 6.71-1.96 3.56 0 6.33 1.22 8.29 3.66s2.94 5.88 2.94 10.32v7.97c0 4.49-1.02 7.95-3.07 10.39-2.05 2.45-4.95 3.66-8.69 3.66-3.35 0-6.06-.96-8.13-2.9-1.07-1-1.91-2.21-2.54-3.62a7.552 7.552 0 0 0-2.84-3.3 7.932 7.932 0 0 0-4.22-1.22c-5.58 0-9.36 5.68-7.11 10.73.53 1.17 1.12 2.29 1.77 3.35 2.42 3.95 5.61 6.94 9.55 8.99S44.74 98 49.72 98c5.81 0 10.79-1.14 14.93-3.43s7.31-5.61 9.49-9.97c2.18-4.35 3.27-9.6 3.27-15.75v-7.97c0-6.14-.98-11.39-2.94-15.75-1.96-4.35-4.82-7.67-8.56-9.93-3.75-2.27-8.24-3.4-13.48-3.4-2.25 0-4.49.37-6.71 1.11-2.23.74-4.09 1.79-5.59 3.14V16.97h26.93c2.09 0 3.98-.84 5.35-2.19a7.443 7.443 0 0 0 2.22-5.3c0-4.13-3.39-7.48-7.57-7.48H32.08c-4.28 0-7.75 3.43-7.75 7.66v5.72z" fill="#dddddd"></path></g>
+                        </svg>
+                        <svg id="overlay-seek-right-10" class="overlay-seek-svg overlay-seek-num-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+                            <g transform="matrix(0.8,0,0,0.8,10,10)"><path d="M28.49 5.36A11.81 11.81 0 0 0 20.2 2c-2 0-3.96.5-5.7 1.45l-7.71 4.2c-1.22.66-2.2 1.62-2.88 2.75s-1.05 2.44-1.05 3.79c0 5.58 6.01 9.2 11.09 6.69l1.86-.92v70.15c0 4.36 3.6 7.89 8.05 7.89s8.06-3.53 8.06-7.89V13.48c0-3.17-1.31-6.04-3.43-8.12zM90.06 8.97C85.34 4.32 78.45 2 69.4 2c-.94 0-1.85.03-2.74.08-7.68.43-13.63 2.74-17.88 6.92-4.75 4.67-7.12 11.23-7.12 19.66v42.68c0 8.39 2.36 14.93 7.08 19.62 4.23 4.21 10.2 6.53 17.91 6.96.89.05 1.81.08 2.75.08 9.01 0 15.88-2.33 20.62-7.01 4.75-4.66 7.12-11.22 7.12-19.65V28.66c0-8.48-2.36-15.04-7.08-19.69zm-8.52 60.11c0 4.56-.98 8.06-2.94 10.49s-5.02 3.65-9.2 3.65-7.24-1.22-9.2-3.65-2.94-5.93-2.94-10.49V30.92c0-4.56.98-8.06 2.94-10.49s5.02-3.65 9.2-3.65 7.24 1.22 9.2 3.65 2.94 5.93 2.94 10.49z" fill="#dddddd"></path></g>
+                        </svg>
+                    </span>
+                    <svg class="overlay-seek-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.35 6.35">
+                        <g transform="matrix(1.5,0,0,1.5,-1.58, -1.58)"><path d="M2.258 1.315a.265.265 0 0 0-.174.469L3.703 3.17l-1.62 1.386a.265.265 0 1 0 .345.4L4.28 3.373a.265.265 0 0 0 0-.403L2.428 1.382a.265.265 0 0 0-.17-.067z" fill="#dddddd"></path></g>
+                    </svg>
+                </div>
+            </div>
+            
+            <div class="controls" id="controls">
+                <div class="progress-bar-container" id="progressContainer">
+                    <div class="progress-bar-hit" id="progressBarHit"></div>
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                        <div class="progress-handle" id="progressHandle"></div>
+                    </div>
+                    <div class="thumbnail-preview" id="thumbnailPreview">
+                        <div class="time-label" id="timeLabel"></div>
+                    </div>
+                </div>
+
+                <div class="controls-bottom">
+                    
+                    <div class="controls-left">
+                        <button class="btn" id="playPauseBtn" title="Space to play/pause">
+                            <svg id="play-svg" class="play-pause-svg active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 163.861 163.861">
+                                <g><path d="M34.857 3.613C20.084-4.861 8.107 2.081 8.107 19.106v125.637c0 17.042 11.977 23.975 26.75 15.509L144.67 97.275c14.778-8.477 14.778-22.211 0-30.686L34.857 3.613z" fill="#dddddd"></path></g>
+                            </svg>
+                            <svg id="pause-svg" class="play-pause-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+                                <g><path d="M13 5v22a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3h1a3 3 0 0 1 3 3zm10-3h-1a3 3 0 0 0-3 3v22a3 3 0 0 0 3 3h1a3 3 0 0 0 3-3V5a3 3 0 0 0-3-3z" fill="#dddddd"></path></g>
+                            </svg>
+                        </button>
+
+                        <div class="volume-container">
+                            <button id="muteBtn" class="volume-icon-btn" title="Toggle Mute (m)">
+                                <svg id="vol-high" class="volume-svg active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                    <g><path d="M20.8 4.293a1 1 0 0 0-1.41 1.414 8.911 8.911 0 0 1 0 12.586 1 1 0 1 0 1.41 1.414 10.911 10.911 0 0 0 0-15.414Z" fill="#dddddd"></path><path d="M18.093 7.293a1 1 0 1 0-1.414 1.414 4.664 4.664 0 0 1 0 6.586 1 1 0 1 0 1.414 1.414 6.665 6.665 0 0 0 0-9.414ZM13.819.207A12.055 12.055 0 0 0 6.268 5H5a5.006 5.006 0 0 0-5 5v4a5.006 5.006 0 0 0 5 5h1.269a12.051 12.051 0 0 0 7.55 4.793A1 1 0 0 0 15 22.81V1.19a1 1 0 0 0-1.181-.983Z" fill="#dddddd"></path></g>
+                                </svg>
+                                <svg id="vol-low" class="volume-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                    <g><path d="M14.003 23.814a.924.924 0 0 1-.181-.017c-2.999-.551-5.752-2.299-7.554-4.794H4.997a5.005 5.005 0 0 1-4.999-5V9.998c0-2.757 2.243-5 5-5h1.271C8.068 2.506 10.821.758 13.822.204a.997.997 0 0 1 1.181.984v21.627a1.001 1.001 0 0 1-1 1Zm4.02-7.042a6.757 6.757 0 0 0 0-9.546.999.999 0 1 0-1.414 1.414 4.756 4.756 0 0 1 0 6.718.999.999 0 1 0 1.414 1.414Z" fill="#dddddd"></path></g>
+                                </svg>
+                                <svg id="vol-off" class="volume-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                    <g><path d="M13.644.418a1.003 1.003 0 0 0-.821-.215C9.822.758 7.069 2.505 5.269 4.997h-.271a5.007 5.007 0 0 0-5 5.001v4.005c0 2.757 2.243 5 5 5h.271c1.802 2.495 4.555 4.243 7.554 4.794a1.004 1.004 0 0 0 .821-.214c.228-.19.36-.472.36-.769V1.187a.998.998 0 0 0-.36-.769Zm-1.64 21.117a10.138 10.138 0 0 1-5.113-3.703l-.299-.415a1 1 0 0 0-.811-.415h-.782c-1.654 0-3-1.346-3-3V9.997c0-1.654 1.346-3 3-3h.782a1 1 0 0 0 .811-.415l.299-.415a10.154 10.154 0 0 1 5.114-3.702v19.068Zm11.729-7.242a.999.999 0 1 1-1.414 1.414l-2.293-2.293-2.293 2.293a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414L18.612 12l-2.293-2.293a.999.999 0 1 1 1.414-1.414l2.293 2.293 2.293-2.293a.999.999 0 1 1 1.414 1.414L21.44 12l2.293 2.293Z" fill="#dddddd"></path></g>
+                                </svg>
+                                <svg id="vol-muted" class="volume-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                    <g><path d="M15.004 20.004v2.812a1.001 1.001 0 0 1-1.181.983c-2.999-.551-5.752-2.299-7.554-4.794h-1.27a5.008 5.008 0 0 1-5.001-5.003v-4.001c0-1.116.361-2.173 1.045-3.057a1.001 1.001 0 0 1 1.582 1.224A2.966 2.966 0 0 0 1.998 10v4.001A3.006 3.006 0 0 0 5 17.003h1.78c.321 0 .622.154.811.414l.3.415a10.142 10.142 0 0 0 5.113 3.703v-1.532a1 1 0 1 1 2 0Zm8.703 3.703a.997.997 0 0 1-1.414 0l-22-22A.999.999 0 1 1 1.707.293L6.33 4.916C8.131 2.468 10.855.753 13.822.205a1 1 0 0 1 1.181.984v12.402l1.686 1.686a4.717 4.717 0 0 0 1.31-3.276 4.718 4.718 0 0 0-1.392-3.359.999.999 0 1 1 1.414-1.414 6.707 6.707 0 0 1 1.978 4.773 6.706 6.706 0 0 1-1.896 4.69l1.415 1.415c3.33-3.418 3.304-8.908-.081-12.292A.999.999 0 1 1 20.851 4.4c4.164 4.164 4.191 10.922.081 15.12l2.774 2.774a.999.999 0 0 1 0 1.414ZM7.762 6.348l5.242 5.242V2.468A10.14 10.14 0 0 0 7.89 6.17l-.128.178Z" fill="#dddddd"></path></g>
+                                </svg>
+                            </button>
+                            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="100">
+                        </div>
+
+                        <div class="time-display" id="timeDisplay">00:00 / 00:00</div>
+                    </div>
+
+                    <div class="controls-right">
+                        <button class="btn" id="settingsBtn" title="Settings">
+                            <svg class="settings-svg active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                                <g><path fill-rule="evenodd" d="M470.006 301.042c-16.074-9.26-26.057-26.511-26.057-45.041 0-18.521 9.982-35.772 26.01-45.023 16.45-9.457 23.292-29.107 16.262-46.719-8.811-22.247-20.808-43.026-35.57-61.768-11.763-14.922-32.196-18.83-48.645-9.312-16.027 9.312-35.992 9.34-52.066.07-16.028-9.27-25.963-26.549-25.916-45.112 0-18.99-13.591-34.75-32.383-37.468a247.327 247.327 0 0 0-71.328.07c-18.746 2.737-32.336 18.488-32.29 37.44 0 18.54-9.936 35.809-25.963 45.07-16.075 9.26-35.992 9.241-52.066-.061-16.449-9.518-36.882-5.591-48.645 9.331a249.99 249.99 0 0 0-20.011 29.562c-5.952 10.306-11.154 21.108-15.559 32.088-7.077 17.64-.234 37.318 16.215 46.799 16.075 9.251 26.057 26.511 26.057 45.032s-9.982 35.767-26.01 45.032c-16.449 9.458-23.291 29.098-16.262 46.705a246.096 246.096 0 0 0 35.57 61.772c11.763 14.922 32.196 18.83 48.645 9.312 16.028-9.312 35.992-9.331 52.066-.07 16.027 9.27 25.963 26.549 25.963 45.112-.047 18.985 13.59 34.745 32.336 37.469a247.073 247.073 0 0 0 35.382 2.549c11.998 0 23.995-.872 35.945-2.62 18.746-2.742 32.336-18.479 32.336-37.431-.047-18.549 9.888-35.819 25.916-45.079 16.074-9.26 35.992-9.241 52.066.061 16.449 9.518 36.882 5.6 48.645-9.331a251.455 251.455 0 0 0 20.011-29.553c5.905-10.305 11.201-21.108 15.559-32.097 7.079-17.64.237-37.323-16.213-46.789zm-150.247-8.22c-9.795 17.031-25.682 29.22-44.708 34.31-18.98 5.089-38.851 2.479-55.863-7.363-35.148-20.302-47.239-65.418-26.947-100.59 13.591-23.592 38.429-36.798 63.876-36.798 12.513 0 25.12 3.168 36.695 9.851 35.148 20.297 47.239 65.427 26.947 100.59z" clip-rule="evenodd" fill="#dddddd"></path></g>
+                            </svg>
+                        </button>
+                        
+                        <button class="btn" id="fullscreenBtn" title="Fullscreen (f)">
+                            <svg id="fs-enter-svg" class="fullscreen-svg active" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                <g><path d="M10.71 13.29a1 1 0 0 1 0 1.42L5.41 20H8a1 1 0 0 1 0 2H3a1 1 0 0 1-1-1v-5a1 1 0 0 1 2 0v2.59l5.29-5.3a1 1 0 0 1 1.42 0zM21 2h-5a1 1 0 0 0 0 2h2.59l-5.3 5.29a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0L20 5.41V8a1 1 0 0 0 2 0V3a1 1 0 0 0-1-1z" fill="#dddddd"></path></g>
+                            </svg>
+                            <svg id="fs-exit-svg" class="fullscreen-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                <g><path d="M3.71 21.71 9 16.41V21a1 1 0 0 0 2 0v-7a1 1 0 0 0-1-1H3a1 1 0 0 0 0 2h4.59l-5.3 5.29a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0zM21.71 2.29a1 1 0 0 0-1.42 0L15 7.59V3a1 1 0 0 0-2 0v7a1 1 0 0 0 1 1h7a1 1 0 0 0 0-2h-4.59l5.3-5.29a1 1 0 0 0 0-1.42z" fill="#dddddd"></path></g>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="settings-menu" class="settings-menu">
+                
+                    <div id="settings-main-view" class="settings-view active">
+                        <div class="settings-menu-item" data-view="speed">
+                            <span class="label">Speed</span>
+                            <span class="value" id="current-speed-label">1x</span>
+                            <span class="arrow">&gt;</span>
+                        </div>
+                        <div class="settings-menu-item" data-view="seek">
+                            <span class="label">Seek Skip</span>
+                            <span class="value" id="current-seek-label">5s</span>
+                            <span class="arrow">&gt;</span>
+                        </div>
+                        <div class="settings-menu-item" data-view="shortcuts">
+                            <span class="label">Shortcuts</span>
+                            <span class="value"></span>
+                            <span class="arrow">&gt;</span>
+                        </div>
+                    </div>
+                    
+                    <div id="settings-speed-view" class="settings-view">
+                        <div class="submenu-header">
+                            <button class="submenu-back-btn" data-view="main">&lt;</button>
+                            <span class="submenu-title">Speed</span>
+                        </div>
+                        <div class="submenu-item" data-speed="0.25">0.25x</div>
+                        <div class="submenu-item" data-speed="0.5">0.5x</div>
+                        <div class="submenu-item" data-speed="0.75">0.75x</div>
+                        <div class="submenu-item active" data-speed="1">1x</div>
+                        <div class="submenu-item" data-speed="1.25">1.25x</div>
+                        <div class="submenu-item" data-speed="1.5">1.5x</div>
+                        <div class="submenu-item" data-speed="1.75">1.75x</div>
+                        <div class="submenu-item" data-speed="2">2x</div>
+                        <div class="submenu-item" data-speed="3">3x</div>
+                    </div>
+
+                    <div id="settings-seek-view" class="settings-view">
+                        <div class="submenu-header">
+                            <button class="submenu-back-btn" data-view="main">&lt;</button>
+                            <span class="submenu-title">Seek Skip</span>
+                        </div>
+                        <div class="submenu-item active" data-seek="5">5s</div>
+                        <div class="submenu-item" data-seek="10">10s</div>
+                    </div>
+
+                    <div id="settings-shortcuts-view" class="settings-view">
+                        <div class="submenu-header">
+                            <button class="submenu-back-btn" data-view="main">&lt;</button>
+                            <span class="submenu-title">Shortcuts</span>
+                        </div>
+                        <div class="submenu-info-item"><strong>Space</strong> <span>Play/Pause</span></div>
+                        <div class="submenu-info-item"><strong>M</strong> <span>Mute/Unmute</span></div>
+                        <div class="submenu-info-item"><strong>F</strong> <span>Fullscreen</span></div>
+                        <div class="submenu-info-item"><strong>&larr; / &rarr;</strong> <span>Seek</span></div>
+                        <div class="submenu-info-item"><strong>Shift + ,/.</strong> <span>Speed</span></div>
+                        <div class="submenu-info-item"><strong>Ctrl (hold)</strong> <span>2x Speed</span></div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+        
+        <div class="file-input-wrapper">
+            <input type="file" id="fileInput" accept="video/mp4" />
+        </div>
+    </div>
+
+    <script>
+        const playerContainer = document.getElementById('playerContainer');
+        const video = document.getElementById('video');
+        const fileInput = document.getElementById('fileInput');
+        const videoWrapper = document.getElementById('videoWrapper');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const playSvg = document.getElementById('play-svg');
+        const pauseSvg = document.getElementById('pause-svg');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const progressHandle = document.getElementById('progressHandle');
+        const progressBarHit = document.getElementById('progressBarHit');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const controls = document.getElementById('controls');
+        const thumbnailPreview = document.getElementById('thumbnailPreview');
+        const timeLabel = document.getElementById('timeLabel');
+        const muteBtn = document.getElementById('muteBtn');
+        const volHigh = document.getElementById('vol-high');
+        const volLow = document.getElementById('vol-low');
+        const volOff = document.getElementById('vol-off');
+        const volMuted = document.getElementById('vol-muted');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const fsEnterSvg = document.getElementById('fs-enter-svg');
+        const fsExitSvg = document.getElementById('fs-exit-svg');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsMenu = document.getElementById('settings-menu');
+        const settingsMainView = document.getElementById('settings-main-view');
+        const settingsSpeedView = document.getElementById('settings-speed-view');
+        const settingsSeekView = document.getElementById('settings-seek-view');
+        const settingsShortcutsView = document.getElementById('settings-shortcuts-view'); // Req 3: Cache new view
+        const currentSpeedLabel = document.getElementById('current-speed-label');
+        const currentSeekLabel = document.getElementById('current-seek-label');
+
+        const overlayCenter = document.getElementById('overlay-center');
+        const overlayTop = document.getElementById('overlay-top');
+        const overlayLeft = document.getElementById('overlay-left');
+        const overlayRight = document.getElementById('overlay-right');
+        const overlayPlaySvg = document.getElementById('overlay-play-svg');
+        const overlayPauseSvg = document.getElementById('overlay-pause-svg');
+        const overlayVolHigh = document.getElementById('overlay-vol-high');
+        const overlayVolLow = document.getElementById('overlay-vol-low');
+        const overlayVolOff = document.getElementById('overlay-vol-off');
+        const overlayVolMuted = document.getElementById('overlay-vol-muted');
+        const overlaySpeedUp = document.getElementById('overlay-speed-up');
+        const overlaySpeedDown = document.getElementById('overlay-speed-down');
+        
+        /* 3) 新增 Ctrl 加速變數 */
+        const overlayTopText = document.getElementById('overlay-top-text');
+        const overlayCtrlSpeed = document.getElementById('overlay-ctrl-speed');
+        
+        /* 1) NEW: Cache new seek number SVGs */
+        const overlaySeekLeft5 = document.getElementById('overlay-seek-left-5');
+        const overlaySeekLeft10 = document.getElementById('overlay-seek-left-10');
+        const overlaySeekRight5 = document.getElementById('overlay-seek-right-5');
+        const overlaySeekRight10 = document.getElementById('overlay-seek-right-10');
+
+        let overlayTimeouts = {};
+
+        let isDragging = false;
+        let controlsTimeout;
+        let isMuted = false;
+        let lastVolume = 1;
+        let seekSkipTime = 5;
+        let showTimeRemaining = false;
+        
+        const availableSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];
+
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                video.src = url;
+            }
+        });
+
+        playPauseBtn.addEventListener('click', togglePlay);
+        video.addEventListener('click', togglePlay);
+        video.addEventListener('play', updatePlayIcon);
+        video.addEventListener('pause', updatePlayIcon);
+
+        video.addEventListener('timeupdate', updateProgress);
+        video.addEventListener('loadedmetadata', () => {
+            updateProgress();
+            updateVolumeIcon();
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            const newVolume = e.target.value / 100;
+            video.volume = newVolume;
+            isMuted = false; 
+            if (newVolume > 0) {
+                lastVolume = newVolume;
+            }
+            updateVolumeIcon();
+        });
+        
+        function updateVolumeIcon() {
+            volHigh.classList.remove('active');
+            volLow.classList.remove('active');
+            volOff.classList.remove('active');
+            volMuted.classList.remove('active');
+
+            if (isMuted) {
+                volMuted.classList.add('active');
+            } else if (video.volume == 0) {
+                volOff.classList.add('active');
+            } else if (video.volume <= 0.5) {
+                volLow.classList.add('active');
+            } else {
+                volHigh.classList.add('active');
+            }
+        }
+
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted; 
+            if (isMuted) {
+                video.volume = 0;
+                volumeSlider.value = 0;
+                showCenterOverlay('muted');
+            } else {
+                if (lastVolume === 0) lastVolume = 1;
+                video.volume = lastVolume;
+                volumeSlider.value = lastVolume * 100;
+                
+                if (lastVolume == 0) showCenterOverlay('off');
+                else if (lastVolume <= 0.5) showCenterOverlay('low');
+                else showCenterOverlay('high');
+            }
+            updateVolumeIcon();
+        });
+
+        function updatePlayIcon() {
+            if (video.paused) {
+                playSvg.classList.add('active');
+                pauseSvg.classList.remove('active');
+            } else {
+                playSvg.classList.remove('active');
+                pauseSvg.classList.add('active');
+            }
+        }
+
+        function togglePlay() {
+            if (video.paused) {
+                video.play();
+                showCenterOverlay('play');
+            } else {
+                video.pause();
+                showCenterOverlay('pause');
+            }
+        }
+
+        function updateProgress() {
+            if (!isDragging && video.duration) {
+                const percent = (video.currentTime / video.duration) * 100;
+                progressFill.style.width = percent + '%';
+                progressHandle.style.left = percent + '%';
+            }
+            updateTimeDisplay();
+        }
+
+        function updateTimeDisplay() {
+            if (!isFinite(video.duration)) {
+                timeDisplay.textContent = '00:00 / 00:00';
+                return;
+            }
+            
+            const duration = formatTime(video.duration);
+
+            if (showTimeRemaining) {
+                const remaining = video.duration - video.currentTime;
+                const formattedRemaining = `-${formatTime(remaining < 0 ? 0 : remaining)}`;
+                timeDisplay.textContent = `${formattedRemaining} / ${duration}`;
+            } else {
+                const current = formatTime(video.currentTime);
+                timeDisplay.textContent = `${current} / ${duration}`;
+            }
+        }
+
+        timeDisplay.addEventListener('click', () => {
+            showTimeRemaining = !showTimeRemaining;
+            updateTimeDisplay();
+        });
+
+
+        function formatTime(seconds) {
+            if (!isFinite(seconds)) return '00:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+        
+        /* 4) UPDATED: 浮水印 JS 輔助函數 (強制重播動畫) */
+        function showOverlay(element, duration = 400) { /* Req 5: Reduced duration from 800 to 400 */
+            clearTimeout(overlayTimeouts[element.id]);
+            
+            element.classList.remove('show'); // 1. 移除 class
+            void element.offsetWidth; // 2. 強制瀏覽器 reflow
+            
+            element.classList.add('show'); // 3. 重新加入 class, 觸發 "in" 動畫
+            
+            overlayTimeouts[element.id] = setTimeout(() => {
+                element.classList.remove('show'); // 4. 動畫結束後 "out"
+            }, duration);
+        }
+
+        function showCenterOverlay(iconName) {
+            [overlayPlaySvg, overlayPauseSvg, overlayVolHigh, overlayVolLow, overlayVolOff, overlayVolMuted, overlaySpeedUp, overlaySpeedDown].forEach(svg => {
+                svg.classList.remove('active');
+            });
+
+            if (iconName === 'play') overlayPlaySvg.classList.add('active');
+            else if (iconName === 'pause') overlayPauseSvg.classList.add('active');
+            else if (iconName === 'muted') overlayVolMuted.classList.add('active');
+            else if (iconName === 'off') overlayVolOff.classList.add('active');
+            else if (iconName === 'low') overlayVolLow.classList.add('active');
+            else if (iconName === 'high') overlayVolHigh.classList.add('active');
+            else if (iconName === 'speed-up') overlaySpeedUp.classList.add('active');
+            else if (iconName === 'speed-down') overlaySpeedDown.classList.add('active');
+            
+            showOverlay(overlayCenter);
+        }
+
+
+        progressBarHit.addEventListener('mousedown', (e) => {
+            if (!video.duration) return;
+            isDragging = true;
+            updateProgressFromMouse(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                updateProgressFromMouse(e);
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (isDragging) {
+                isDragging = false;
+                const rect = progressBarHit.getBoundingClientRect();
+                const isOverBar = e.clientX >= rect.left && e.clientX <= rect.right &&
+                                  e.clientY >= rect.top && e.clientY <= rect.bottom;
+                if (!isOverBar) {
+                    thumbnailPreview.classList.remove('show');
+                }
+            }
+        });
+
+        function updateProgressFromMouse(e) {
+            if (!video.duration) return;
+            const rect = progressBar.getBoundingClientRect();
+            const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            
+            video.currentTime = percent * video.duration;
+            progressFill.style.width = percent * 100 + '%';
+            progressHandle.style.left = percent * 100 + '%';
+            updateTimeDisplay();
+
+            if (isDragging) {
+                showThumbnail(e, percent);
+            }
+        }
+
+        progressBarHit.addEventListener('mousemove', (e) => {
+            if (!isDragging) {
+                const rect = progressBar.getBoundingClientRect();
+                const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                showThumbnail(e, percent);
+            }
+        });
+
+        progressBarHit.addEventListener('mouseleave', () => {
+            if (!isDragging) {
+                thumbnailPreview.classList.remove('show');
+            }
+        });
+
+        function showThumbnail(e, percent) {
+            if (!video.duration) return;
+            const targetTime = percent * video.duration;
+            const rect = progressBar.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            
+            thumbnailPreview.style.left = Math.max(0, Math.min(rect.width, mouseX)) + 'px';
+            timeLabel.textContent = formatTime(targetTime);
+            thumbnailPreview.classList.add('show');
+        }
+
+        videoWrapper.addEventListener('mousemove', () => {
+            videoWrapper.classList.add('show-cursor');
+            controls.classList.add('show');
+            clearTimeout(controlsTimeout);
+            
+            controlsTimeout = setTimeout(() => {
+                if (!isDragging) { 
+                    controls.classList.remove('show');
+                    videoWrapper.classList.remove('show-cursor');
+                }
+            }, 4000);
+        });
+
+        videoWrapper.addEventListener('mouseleave', () => {
+            if (!isDragging) {
+                controls.classList.remove('show');
+                videoWrapper.classList.remove('show-cursor');
+                clearTimeout(controlsTimeout);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (!video.src) return;
+            if (e.target.tagName === 'INPUT') return; 
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlay();
+            } else if (e.code === 'ArrowLeft') {
+                video.currentTime = Math.max(0, video.currentTime - seekSkipTime);
+                
+                /* 1) CHANGED: Show SVG number */
+                overlaySeekLeft5.classList.remove('active');
+                overlaySeekLeft10.classList.remove('active');
+                if (seekSkipTime === 5) {
+                    overlaySeekLeft5.classList.add('active');
+                } else if (seekSkipTime === 10) {
+                    overlaySeekLeft10.classList.add('active');
+                }
+                showOverlay(overlayLeft);
+                
+            } else if (e.code === 'ArrowRight') {
+                video.currentTime = Math.min(video.duration, video.currentTime + seekSkipTime);
+                
+                /* 1) CHANGED: Show SVG number */
+                overlaySeekRight5.classList.remove('active');
+                overlaySeekRight10.classList.remove('active');
+                if (seekSkipTime === 5) {
+                    overlaySeekRight5.classList.add('active');
+                } else if (seekSkipTime === 10) {
+                    overlaySeekRight10.classList.add('active');
+                }
+                showOverlay(overlayRight);
+
+            } else if (e.code === 'KeyM') {
+                muteBtn.click();
+            } else if (e.code === 'KeyF') {
+                toggleFullScreen();
+            }
+
+            if (e.shiftKey) {
+                if (e.key === '.' || e.key === '>') {
+                    e.preventDefault();
+                    changeSpeed('up');
+                } else if (e.key === ',' || e.key === '<') {
+                    e.preventDefault();
+                    changeSpeed('down');
+                }
+            }
+            
+            /* 3) 恢復: Ctrl 長按加速 */
+            if (e.key === 'Control' && !e.repeat && video.playbackRate !== 2) {
+                video.playbackRate = 2;
+                overlayTopText.textContent = '2x';
+                overlayCtrlSpeed.style.display = 'block'; // 顯示 >>
+                clearTimeout(overlayTimeouts[overlayTop.id]);
+                overlayTop.classList.add('show');
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            /* 3) 恢復: Ctrl 放開 */
+            if (e.key === 'Control' && video.playbackRate === 2) {
+                // 恢復到設定的速度 (而不是 1)
+                const currentSpeedSetting = availableSpeeds[availableSpeeds.indexOf(parseFloat(currentSpeedLabel.textContent))];
+                video.playbackRate = currentSpeedSetting;
+                
+                // --- 這是修改的關鍵 ---
+                
+                // 1. 我們不再呼叫 showOverlay()。
+                //    我們直接移除 'show' class，這會觸發 CSS 中的 150ms 淡出動畫。
+                //    因為我們沒有更改文字或隱藏 '>>'，所以 '2x>>' 會一起淡出。
+                overlayTop.classList.remove('show'); 
+                
+                // 2. 我們在 150ms (CSS 動畫結束) 後才隱藏 '>>' 圖示，
+                //    這樣它就不會在下次「速度改變」時錯誤地短暫出現。
+                setTimeout(() => {
+                    overlayCtrlSpeed.style.display = 'none';
+                }, 150); // 150ms 必須匹配 CSS 的 transition-duration
+            }
+        });
+
+        function changeSpeed(direction) {
+            let currentSpeedIndex = availableSpeeds.indexOf(video.playbackRate);
+            if (currentSpeedIndex === -1) { // 如果是 2x (ctrl), 找到最接近的
+                 currentSpeedIndex = availableSpeeds.indexOf(parseFloat(currentSpeedLabel.textContent));
+            }
+            
+            if (direction === 'up' && currentSpeedIndex < availableSpeeds.length - 1) {
+                currentSpeedIndex++;
+            } else if (direction === 'down' && currentSpeedIndex > 0) {
+                currentSpeedIndex--;
+            } else {
+                return;
+            }
+
+            const newSpeed = availableSpeeds[currentSpeedIndex];
+            video.playbackRate = newSpeed;
+
+            overlayTopText.textContent = `${newSpeed}x`;
+            overlayCtrlSpeed.style.display = 'none'; // 隱藏 >>
+            showOverlay(overlayTop);
+
+            showCenterOverlay(direction === 'up' ? 'speed-up' : 'speed-down');
+            
+            currentSpeedLabel.textContent = `${newSpeed}x`;
+            if (settingsSpeedView.querySelector('.active')) {
+                settingsSpeedView.querySelector('.active').classList.remove('active');
+            }
+            // 處理 .75 或 .25 結尾
+            const speedSelector = newSpeed.toString().includes('.') ? `[data-speed="${newSpeed}"]` : `[data-speed="${newSpeed.toFixed(0)}"]`;
+            const speedItem = settingsSpeedView.querySelector(speedSelector) || settingsSpeedView.querySelector(`[data-speed="${newSpeed.toString()}"]`);
+            if (speedItem) {
+                speedItem.classList.add('active');
+            }
+        }
+
+
+        progressHandle.addEventListener('mousedown', () => {
+             if (!video.duration) return;
+            isDragging = true;
+        });
+
+        fullscreenBtn.addEventListener('click', toggleFullScreen);
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                playerContainer.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                fsEnterSvg.classList.remove('active');
+                fsExitSvg.classList.add('active');
+            } else {
+                fsEnterSvg.classList.add('active');
+                fsExitSvg.classList.remove('active');
+            }
+        });
+
+        settingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            settingsMenu.classList.toggle('show');
+            if (settingsMenu.classList.contains('show')) {
+                showSettingsView('main');
+            }
+        });
+
+        settingsMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        document.addEventListener('click', () => {
+            settingsMenu.classList.remove('show');
+        });
+
+        function showSettingsView(viewName) {
+            settingsMainView.classList.remove('active');
+            settingsSpeedView.classList.remove('active');
+            settingsSeekView.classList.remove('active');
+            settingsShortcutsView.classList.remove('active'); // Req 3: Add this
+
+            if (viewName === 'main') {
+                settingsMainView.classList.add('active');
+            } else if (viewName === 'speed') {
+                settingsSpeedView.classList.add('active');
+            } else if (viewName === 'seek') {
+                settingsSeekView.classList.add('active');
+            } else if (viewName === 'shortcuts') { // Req 3: Add this
+                settingsShortcutsView.classList.add('active');
+            }
+        }
+
+        settingsMainView.addEventListener('click', (e) => {
+            const targetItem = e.target.closest('.settings-menu-item');
+            if (!targetItem) return;
+
+            const viewName = targetItem.dataset.view;
+            if (viewName) {
+                showSettingsView(viewName);
+            }
+        });
+
+        settingsMenu.querySelectorAll('.submenu-back-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                showSettingsView('main');
+            });
+        });
+
+        settingsSpeedView.addEventListener('click', (e) => {
+            const targetItem = e.target.closest('.submenu-item');
+            if (!targetItem) return;
+
+            const newSpeed = targetItem.dataset.speed;
+            video.playbackRate = parseFloat(newSpeed);
+            currentSpeedLabel.textContent = `${newSpeed}x`;
+            
+            settingsSpeedView.querySelector('.active').classList.remove('active');
+            targetItem.classList.add('active');
+            
+            showSettingsView('main');
+        });
+
+        settingsSeekView.addEventListener('click', (e) => {
+            const targetItem = e.target.closest('.submenu-item');
+            if (!targetItem) return;
+
+            const newSeekTime = targetItem.dataset.seek;
+            seekSkipTime = parseInt(newSeekTime);
+            currentSeekLabel.textContent = `${newSeekTime}s`;
+
+            settingsSeekView.querySelector('.active').classList.remove('active');
+            targetItem.classList.add('active');
+            
+            showSettingsView('main');
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileInputWrapper = document.querySelector('.file-input-wrapper');
+            
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const videoPath = urlParams.get('video');
+
+                if (videoPath) {
+                    const decodedPath = decodeURIComponent(videoPath);
+                    const fileUrl = 'file:///' + decodedPath.replace(/\\/g, '/');
+                    video.src = fileUrl;
+                }
+            } catch (error) {
+                console.error("Error processing video URL parameter:", error);
+            }
+        });
+
+    </script>
+</body>
+</html>
